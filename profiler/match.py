@@ -47,9 +47,26 @@ MATCH_CONTAINMENT = 0.80
 # coin toss between two callsites that both fit.
 MIN_MARGIN = 0.10
 
-# A template this short cannot identify anything: "You are a helpful assistant." is contained
-# in half an estate. Below it we refuse to match on prompt alone and lean on tools and shape.
-MIN_TEMPLATE_LINES = 3
+# What makes a template unable to identify anything is that its lines are COMMON, not that
+# there are few of them. Counting lines confuses the two and throws away real callsites:
+# "Extract the total amount. Return JSON." / "Invoice text:" is two lines and perfectly
+# distinctive, and a line-count rule discarded it without scoring it, while
+# "You are a helpful assistant." is one line that half an estate contains.
+#
+# So identifiability is decided by whether any of a template's lines is rare in this estate -
+# which is exactly the anchor test - and a callsite with no rare line can still be identified by
+# its tools.
+
+# Retrieval indexes only a callsite's rarest template lines. A line shared by more than this
+# fraction of the estate is boilerplate and retrieves everything, which is no retrieval at all.
+COMMON_LINE_FRACTION = 0.02
+ANCHORS_PER_NODE = 6
+
+# Stop unioning posting lists once this many candidates are in hand. Scoring is cheap; dragging
+# in every callsite that shares a moderately common line is not.
+ENOUGH_CANDIDATES = 24
+
+EMPTY: FrozenSet[str] = frozenset()
 
 
 @dataclass
@@ -66,9 +83,13 @@ class Known:
     runs_seen: int
     first_seen: str
 
+    # set at load: this template has no line rare enough to retrieve on
+    no_anchors: bool = False
+
     @property
-    def thin(self) -> bool:
-        return len(self.lines) < MIN_TEMPLATE_LINES
+    def identifiable(self) -> bool:
+        """Can this callsite be recognised at all? Rare prompt lines, or tools, or neither."""
+        return (not self.no_anchors) or bool(self.tools)
 
 
 @dataclass
@@ -131,7 +152,10 @@ class Matcher:
         self.scope_to_app = scope_to_app
         self.known: Dict[str, Known] = {}
         self.by_line: Dict[int, Set[str]] = defaultdict(set)
+        self.by_anchor: Dict[int, Set[str]] = defaultdict(set)
+        self.always_scan: Set[str] = set()
         self._load(registry_path)
+        self._build_anchors()
 
     def _load(self, path: str) -> None:
         con = sqlite3.connect(path)
@@ -152,28 +176,81 @@ class Matcher:
             for line in lines:
                 self.by_line[line].add(node_id)
 
+    def _build_anchors(self) -> None:
+        """Index each callsite on its RAREST template lines, not on all of them.
+
+        Indexing every line does no work at all. Boilerplate is boilerplate precisely because
+        every callsite has it: measured over 5,000 callsites, `## Role`, `Return JSON only.` and
+        `Escalate anything you cannot resolve.` each appeared in all 5,000, so every request
+        retrieved every callsite and the "index" was a linear scan with extra steps.
+
+        The distinguishing power sits in the opposite tail - the median template line belongs to
+        exactly one callsite. Retrieving on the rare lines is what a search engine does with rare
+        terms, and it turns candidate generation from O(estate) into O(a handful).
+
+        A callsite built entirely from boilerplate has no rare line to be found by. Those go in
+        `always_scan`, which is small by construction: if it were large, the estate would have no
+        distinguishable callsites and nothing here would work anyway.
+        """
+        estate = max(len(self.known), 1)
+        # a line in more than this share of callsites carries no retrieval value
+        common = max(2, int(estate * COMMON_LINE_FRACTION))
+
+        for known in self.known.values():
+            rare = sorted((ln for ln in known.lines if len(self.by_line[ln]) <= common),
+                          key=lambda ln: len(self.by_line[ln]))
+            anchors = rare[:ANCHORS_PER_NODE]
+            if not anchors:
+                known.no_anchors = True
+                # only worth scoring at all if something else can identify it
+                if known.tools:
+                    self.always_scan.add(known.node_id)
+                continue
+            for line in anchors:
+                self.by_anchor[line].add(known.node_id)
+
     def __len__(self) -> int:
         return len(self.known)
 
     def candidates(self, lines: FrozenSet[int], app_id: str) -> List[Known]:
-        """Callsites sharing at least one template line with this request.
+        """Callsites worth scoring for this request.
 
-        Linear scan over a few thousand callsites per request is affordable once but not per
-        row of a gateway export, and the index turns it into a set union over the lines the
-        request actually has.
+        Retrieval is on anchors - the rare lines - plus the small set of callsites that have no
+        rare line at all. This narrows what is scored; it must never change what is chosen, so
+        `test_the_anchor_index_returns_what_a_full_scan_would` compares it against scoring the
+        whole estate.
         """
-        hits: Counter = Counter()
-        for line in lines:
-            for node_id in self.by_line.get(line, ()):
-                hits[node_id] += 1
-        found = [self.known[n] for n in hits]
+        # Union the request's anchor lines RAREST FIRST and stop once there is enough to score.
+        #
+        # Taking every anchor makes candidates grow with the estate: a line like
+        # "Apply desk rule 137" is shared by 125 callsites at 50,000, still "rare" by any
+        # relative threshold, and unioning it drags in all 125. Measured that way candidates went
+        # 3 -> 18 -> 71 -> 179 as the estate grew, which is linear wearing an index's clothes.
+        #
+        # If a callsite's template is contained in this request then every one of its anchors is
+        # in this request too - including its rarest. So the rarest lines find it, and the common
+        # ones only add candidates that a rarer line would have found anyway.
+        found: Set[str] = set(self.always_scan)
+        present = sorted((ln for ln in lines if ln in self.by_anchor),
+                         key=lambda ln: len(self.by_anchor[ln]))
+        for line in present:
+            if len(found) >= ENOUGH_CANDIDATES:
+                break
+            posting = self.by_anchor[line]
+            # Once a rare line has produced candidates, refuse a big posting list rather than
+            # unioning it to reach the target. Breaking only AFTER the union let one 500-entry
+            # list in to get from 1 candidate to 24, and candidates grew with the estate again:
+            # 3 -> 18 -> 29 -> 71 -> 286. The true match is found by its own rarest anchor,
+            # which is in this request and is processed first, so a longer list adds only
+            # callsites a rarer line would have surfaced anyway.
+            if found and len(posting) > ENOUGH_CANDIDATES:
+                continue
+            found |= posting
+
+        out = [self.known[n] for n in found]
         if self.scope_to_app:
-            found = [k for k in found if k.app_id == app_id]
-        # a thin template shares few lines and can be missed by the index entirely
-        found += [k for k in self.known.values()
-                  if k.thin and k not in found
-                  and (not self.scope_to_app or k.app_id == app_id)]
-        return found
+            out = [k for k in out if k.app_id == app_id]
+        return out
 
     def score(self, known: Known, lines: FrozenSet[int], tools: FrozenSet[str],
               shape: str) -> Tuple[float, float]:
@@ -208,8 +285,9 @@ class Matcher:
 
         scored: List[Tuple[float, float, Known]] = []
         for known in self.candidates(lines, call.app_id):
-            if known.thin and not known.tools:
-                # nothing here can identify anything; refusing is the honest answer
+            if not known.identifiable:
+                # no rare prompt line and no tools - nothing here can identify anything, and
+                # refusing is more useful than a match on boilerplate
                 continue
             score, contained = self.score(known, lines, tools, shape)
             if contained > 0:

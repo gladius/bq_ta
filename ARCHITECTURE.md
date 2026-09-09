@@ -269,6 +269,7 @@ re-derives them and its findings read generic. Still a gap.
 | per-node judge (profile audit + intruder) · gate | **implemented** |
 | **run reconstruction (chain)** + honest unusable verdict | **implemented** |
 | **registry** — memory across runs, re-identification across prompt edits | **implemented** |
+| **`match.py`** — one request → which known callsite (containment, anchor index) | **implemented**, no caller yet |
 | **hard corpus + `stress.py` scorer** | **implemented** |
 | `diagnose.py` histogram + per-agent gap | **implemented** — now scores the filtered keys |
 | **`report_html.py`** — index + one page per agent, token and cache bars | **implemented** |

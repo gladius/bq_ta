@@ -111,11 +111,33 @@ def test_two_callsites_that_both_fit_are_ambiguous_not_a_coin_toss(tmp_path):
     assert m.node_id is not None and m.runners_up
 
 
-def test_a_thin_template_cannot_carry_a_match_alone(tmp_path):
-    """"You are a helpful assistant." is contained in half an estate."""
-    path = remember(str(tmp_path / "r.sqlite"), [("app:thin", "app", THIN, [])])
+def test_a_boilerplate_template_cannot_carry_a_match_alone(tmp_path):
+    """A generic line is unidentifiable when the ESTATE shares it, not when it is short.
+
+    Thirty callsites all fronted by "You are a helpful assistant." and nothing else: the line
+    identifies none of them, and answering with any one would be a guess. In an estate of one
+    the same line is perfectly distinctive, which is why the rule counts how many callsites
+    share a line rather than how many lines a callsite has.
+    """
+    path = remember(str(tmp_path / "r.sqlite"),
+                    [(f"app:generic{i}", "app", THIN, []) for i in range(30)])
     m = Matcher(path).match(call(THIN + ["Summarise the document below.", "Be terse."]))
     assert m.verdict == "unknown"
+
+
+def test_a_short_but_distinctive_template_does_match(tmp_path):
+    """The case the old line-count rule silently discarded.
+
+    `app_platform`'s amount extractor is two lines and unmistakable. Requiring three threw it
+    away without even scoring it, so a callsite that had been profiled came back as new.
+    """
+    short = ["Extract the total amount. Return JSON.", "Invoice text:"]
+    path = remember(str(tmp_path / "r.sqlite"), [
+        ("app:amount", "app", short, []),
+        ("app:triage", "app", TRIAGE, []),
+    ])
+    m = Matcher(path).match(call(short + ["Invoice 4471 dated 2026-03-02, total EUR 812.40."]))
+    assert m.verdict == "matched" and m.node_id == "app:amount"
 
 
 def test_a_thin_template_with_tools_can_match(tmp_path):

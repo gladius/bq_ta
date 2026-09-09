@@ -88,6 +88,36 @@ partition, so a high rate would undermine everything downstream.
 `LLM_KEY` is read from `.env` (or the environment) and never logged. Without it the deterministic
 stages still run; pass `--no-llm` to skip the LLM explicitly.
 
+## Have we profiled this callsite already?
+
+Grouping cannot answer that from a single request. It is a batch operation: document frequency
+decides which lines are template and which are payload, and with one request every line looks
+stable, so the derived id differs every time. **A node id is not computable from one request.**
+
+`match.py` answers it by lookup instead - compare the request against templates already known:
+
+```python
+from profiler.match import Matcher
+m = Matcher("registry.sqlite")
+result = m.match(call)        # .seen_before, .node_id, .containment, .verdict
+```
+
+The measure is **containment**, not Jaccard: a request belongs to a callsite when it *contains*
+that callsite's template, whatever payload it also carries. Jaccard punishes the request for its
+payload, so a 400-line retrieved document drowns a 6-line template and the callsite reads as new
+on every call.
+
+Measured by feeding an export's own requests back one at a time, against callsites profiled from
+it: **1,214 correct, 0 wrong, 84 refused, 2 recovered** that grouping had left below its size
+floor. The 84 are one callsite whose stored template is empty - a sliding-window agent with no
+system prompt and a different user turn every call. It has no stable content, so nothing can
+recognise it from content.
+
+Retrieval is on each callsite's *rarest* template lines, so it does not slow down as the estate
+grows: at 200,000 callsites a lookup scores **1 candidate in 0.36 ms**. It refuses rather than
+guesses below 80% containment, when two callsites fit within 0.10 of each other, and when a
+template's lines are all common across the estate.
+
 ## Checking the profile instead of believing it
 
 The point is not to be told there are twenty callsites. It is to open one and satisfy yourself.
@@ -195,6 +225,7 @@ profiler/
   metrics.py           cache, waste, and per-callsite anatomy
   chain.py             run reconstruction, and where it is impossible
   registry.py          memory across runs; re-identification across prompt edits
+  match.py             one request -> which known callsite, if any (containment lookup)
   store.py             every grouped request -> DuckDB
   report.py            Markdown + JSON
   report_html.py       index + one page per agent
