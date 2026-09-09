@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import ast
 import os
-import sys
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
 
 # These modules produce the measured numbers. None of them may reach for the LLM layer.
 DETERMINISTIC = ["load.py", "single.py", "identity.py", "segment.py", "metrics.py",

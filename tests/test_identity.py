@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from profiler.identity import (adaptive_min_size, group_app, identity_text, jaccard,
                                stable_node_id)

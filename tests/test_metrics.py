@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from profiler.load import Call
 from profiler.metrics import compute, request_document

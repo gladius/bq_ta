@@ -7,15 +7,11 @@ change weekly re-analyses everything forever and accumulates nothing.
 
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
 
 from profiler.identity import stable_node_id
 from profiler.registry import Registry, line_delta, template_similarity

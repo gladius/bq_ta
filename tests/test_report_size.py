@@ -12,14 +12,10 @@ nobody opens, and the failure is silent: it renders, it is just unusable.
 
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime, timedelta
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
 
 from profiler.load import Call
 from profiler.metrics import compute, prose_document

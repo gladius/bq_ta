@@ -5,11 +5,9 @@ from __future__ import annotations
 import csv
 import json
 import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from profiler.config import Mapping
 from profiler.load import load_calls, resolve_app_id
