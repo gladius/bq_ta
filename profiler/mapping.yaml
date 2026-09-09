@@ -1,0 +1,25 @@
+# Column mapping for a litellm / BigQuery CSV export.
+# Only this file should need changing when the real export arrives.
+
+columns:
+  request_id: request_id
+  timestamp:  startTime
+  model:      model
+  request:    request_payload
+  response:   response_payload
+  call_type:  call_type          # optional; used to drop non-chat rows
+
+# The agent identity lives in JSON, not in a column. Paths are tried in order and the first
+# non-null wins; disagreements between them are counted and reported, because a high rate
+# would undermine the outer partition everything else depends on.
+app_id_paths:
+  - "request_payload.labels.vz_key_name"
+  - "client_metadata.headers.x-subject"
+
+options:
+  json_is_string: true           # payloads stored as JSON strings rather than structs
+  max_rows_per_app: 1000         # 50-100 per callsite suffices; 1000 is generous
+  chat_call_types:               # rows whose call_type is not in this list are dropped
+    - completion
+    - acompletion
+    - chat.completions
