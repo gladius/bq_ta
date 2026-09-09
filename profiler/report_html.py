@@ -118,7 +118,15 @@ tr:last-child td { border-bottom:none; }
          margin-right:4px; white-space:nowrap; }
 
 details.node { border-top:1px solid var(--line); }
-details.node > summary { cursor:pointer; padding:10px 2px; font-size:12.5px; color:var(--accent); }
+details.node > summary { cursor:pointer; padding:10px 4px; font-size:13px;
+      color:var(--accent); list-style:none; }
+details.node > summary::-webkit-details-marker { display:none; }
+details.node > summary::before { content:"\25B8 "; font-size:10px; }
+details.node[open] > summary::before { content:"\25BE "; }
+details.node > summary:hover { text-decoration:underline; }
+details.node:target { background:rgba(128,128,128,.08); border-radius:6px; }
+a.open { text-decoration:none; }
+a.open:hover { text-decoration:underline; }
 pre { background:rgba(128,128,128,.1); padding:12px; border-radius:6px; overflow-x:auto;
       font-size:12px; line-height:1.5; margin:8px 0; max-height:420px; }
 ul { margin:6px 0; padding-left:20px; }
@@ -144,6 +152,20 @@ li { margin:3px 0; }
 
 
 PAGER_SCRIPT = """<script>
+// A link to #some-details scrolls there but leaves it closed, so the reader arrives at a
+// collapsed heading and concludes nothing happened.
+function openTarget() {
+  var hash = location.hash;
+  if (!hash || hash.length < 2) return;
+  var el = document.getElementById(hash.slice(1));
+  if (!el) return;
+  if (el.tagName === 'DETAILS') el.open = true;
+  el.scrollIntoView({block: 'start'});
+}
+window.addEventListener('hashchange', openTarget);
+document.addEventListener('DOMContentLoaded', openTarget);
+openTarget();
+
 document.querySelectorAll('.pager').forEach(function(bar){
   var reqs = document.querySelector('.reqs[data-for="' + bar.id + '"]');
   if (!reqs) return;
@@ -256,6 +278,11 @@ def _anatomy_cell(node: NodeResult) -> str:
     return bar + f'<div class="legend">{rows}</div>'
 
 
+def _dom_id(node: NodeResult) -> str:
+    """A DOM id for one callsite, safe for an href anchor."""
+    return "n-" + "".join(c if c.isalnum() else "-" for c in node.node.node_id)
+
+
 def _node_row(node: NodeResult, app_tokens: int) -> str:
     m = node.metrics
     share = (m.calls * m.avg_request_tokens) / max(app_tokens, 1)
@@ -264,7 +291,11 @@ def _node_row(node: NodeResult, app_tokens: int) -> str:
     purpose = (node.label or {}).get("purpose") or ""
     return (
         "<tr>"
-        f'<td><b>{e(_name(node))}</b><div class="note">{e(purpose[:150])}</div>'
+        # the name links to this callsite's own detail pane. It was plain bold text, and the
+        # <details> for it sits in a separate list below the table - so a reader clicked the
+        # name, nothing happened, and concluded the detail did not exist.
+        f'<td><a class="open" href="#{_dom_id(node)}"><b>{e(_name(node))}</b></a>'
+        f'<div class="note">{e(purpose[:150])}</div>'
         f'<div class="mono chip">{e(node.node.node_id)}</div></td>'
         f'<td class="mono">{m.calls:,}<div class="note">{share:.0%} of tokens</div></td>'
         f'<td class="mono">{m.avg_request_tokens:,}</td>'
@@ -409,7 +440,8 @@ def _sample_requests(node: NodeResult, calls: Sequence[Any], budget: int) -> str
 def _node_detail(node: NodeResult, calls: Sequence[Any] = (),
                  budget: int = MIN_SAMPLES) -> str:
     m = node.metrics
-    out = [f'<details class="node"><summary>{e(_name(node))} &mdash; detail</summary>']
+    out = [f'<details class="node" id="{_dom_id(node)}">'
+           f'<summary>{e(_name(node))} &mdash; detail</summary>']
 
     a = m.anatomy
     if a:
