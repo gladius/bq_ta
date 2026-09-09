@@ -13,7 +13,8 @@ not be trusted in a dynamic estate:
    there is no answer key, so the grouping has to be able to report its own reliability.
 
 The noise filter, the linkage and the threshold are unchanged and were measured in the spike
-(../spike/DECISIONS.md D26-D32).
+(sandbox/spike/DECISIONS.md D26-D32, local only; the findings that survived are
+summarised in STRESS_FINDINGS.md).
 """
 
 from __future__ import annotations

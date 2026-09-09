@@ -1,27 +1,33 @@
 # Agent Profiler — implementation plan
 
-> **Status: built and verified end to end.** See `README.md` to run it. Measured on the
-> development fixture (3,229 rows, 16 apps, ground truth known):
+> ## Superseded - kept as a record, not as documentation
+>
+> This is the plan for an earlier design that **also proposed prompt rewrites**: three LLM
+> auditors (efficiency, security, correctness) and three optimiser skills. That layer was
+> deleted. Findings hung on a grouping we could not yet trust are worse than no findings,
+> because they are confidently wrong, and `tests/test_separation.py` now fails if those modules
+> return.
+>
+> Everything below describing `auditors.py`, `optimize.py`, `validate.py`, proposals, rewrites
+> or the sampled verification gate **is no longer true of the code**. The numbers it quotes (56
+> callsites, 46 tests, 38,912 recoverable tokens) come from a fixture that no longer exists.
+>
+> For what is actually built, read in this order:
 >
 > | | |
 > |---|---|
-> | callsites discovered | **56**, against 56 true callsites |
-> | calls assigned | **3,210 / 3,210 (100%)** |
-> | verification gate | **PASSED — 20/20 sampled findings confirmed** |
-> | optimisation found | **38,912 tokens** recoverable across the export |
-> | LLM cost | **$0.90** first run, $0.00 cached; 289 calls |
-> | runtime | 47 s with concurrency; 4 s with `--no-llm` |
-> | tests | 46 passing |
+> | [README.md](README.md) | how to run it, and what it deliberately does not do |
+> | [ARCHITECTURE.md](ARCHITECTURE.md) | the code as it stands, including the weak parts |
+> | [STRESS_FINDINGS.md](STRESS_FINDINGS.md) | what two adversarial corpora broke, and the nine bugs they found |
 >
-> The verification stage earned its place immediately: it rejected three `output_optimization`
-> proposals that would have changed a model's output format, which led to the safety-class
-> split now described in §7.
+> It is kept because it records *why* each stage was designed the way it was, and the
+> optimisation layer is expected back once the profile half is trustworthy on real data.
 
 Turns a BigQuery/litellm CSV export into per-callsite profiles, security and efficiency findings,
 and concrete optimisation advice — with no instrumentation of the calling applications.
 
 Design choices are carried over from the spike and cite the measurement that settled them
-(`../spike/DECISIONS.md`, `../spike/ASSESSMENT.md`). Where something is *not* yet measured, it
+(`sandbox/spike/DECISIONS.md`, `sandbox/spike/ASSESSMENT.md` - local only, not in this repo). Where something is *not* yet measured, it
 says so.
 
 ---

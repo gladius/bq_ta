@@ -96,7 +96,8 @@ class Settings:
     # Memory across runs: which callsites we have already profiled. Deleting this file
     # loses history only - it never changes what a run measures.
     registry_path: str = os.path.join(HERE, "registry.sqlite")
-    # grouping parameters, all measured in the spike (see ../spike/DECISIONS.md)
+    # grouping parameters, all measured in the spike (sandbox/spike/DECISIONS.md,
+    # local only - the findings are summarised in STRESS_FINDINGS.md)
     tau: float = 0.6                 # D26: 0.6 is the usable ceiling
     min_doc_freq: int = 2            # D27: strips per-call noise only
     min_node_fraction: float = 0.02  # relative floor, for small exports
