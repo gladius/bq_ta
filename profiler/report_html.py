@@ -430,9 +430,18 @@ def _sample_requests(node: NodeResult, calls: Sequence[Any], budget: int) -> str
         '<button data-step="1">next &rsaquo;</button>'
         '<span class="note">%d requests shown%s</span>'
         '</div>' % (gid, len(chosen), len(chosen), more))
+    # Say plainly that this view is cut, and where the uncut one is. A page that shows a
+    # truncated prompt without saying so reads as the whole prompt, and the reader concludes
+    # the profiler only saw the first few hundred characters.
     legend = ('<div class="legend"><span class="ok">= shared by every request</span>'
               '<span class="warn">~ differs</span>'
-              '<span class="muted">? not in the split</span></div>')
+              '<span class="muted">? not in the split</span></div>'
+              '<p class="note">Lines longer than %d characters, and messages beyond %d lines, '
+              'are cut here so this file stays openable &mdash; the cut always says how much it '
+              'removed. Nothing is cut in the analysis; only in this view. For the prompts '
+              'whole, run <code>python serve.py</code> and open this callsite, or '
+              '<code>python inspect_calls.py --node %s --all</code>.</p>'
+              % (LINE_CAP, MSG_LINES, e(node.node.node_id)))
     return (legend + pager + '<div class="reqs" data-for="%s">%s</div>'
             % (gid, "".join(out)))
 

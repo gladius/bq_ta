@@ -40,8 +40,13 @@ if HERE not in sys.path:
 
 from profiler.report_html import CSS, ROLE_REGION
 
-LINE_CAP = 400          # characters of one line before it is cut, with the cut declared
-PAGE_ROWS = 200         # rows per listing page
+# The line-listing table shows hundreds of rows at once, so a long line is cut there to keep
+# the table readable. A REQUEST is different: it is fetched on demand, one at a time, straight
+# from the store - nothing is embedded ahead of time and there is no page budget to protect. So
+# a request renders whole. Cutting it was inherited from the static page, where the cap is a
+# real constraint, and it made the live view answer a question nobody asked it.
+TABLE_LINE_CAP = 400    # one line inside the static/dynamic listing
+HUGE_REQUEST = 4_000_000  # only a pathological request is cut, and it says so
 
 EXTRA_CSS = """
 .crumbs { font-size:12.5px; color:var(--dim); margin-bottom:14px; }
@@ -251,7 +256,7 @@ def view_node(store: Store, node_id: str) -> bytes:
         body.append(table(
             ["seen in", "line"],
             [[f"<span class='mono {'ok' if k == 'static' else 'warn'}'>{df}/{tot}</span>",
-              f"<span class='mono'>{e(ln[:LINE_CAP])}</span>"]
+              f"<span class='mono'>{e(ln[:TABLE_LINE_CAP])}</span>"]
              for k, df, tot, ln in lines]))
 
     total = store.q("SELECT COUNT(*) FROM calls WHERE node_id = ?", [node_id])[0][0]
@@ -302,13 +307,15 @@ def view_call(store: Store, node_id: str, index: int) -> bytes:
 
     request = json.loads(request_json)
     response = json.loads(response_json)
+    oversized = len(request_json) > HUGE_REQUEST
     out = [crumbs(("all agents", "/"), (app, f"/agent/{url_of(app)}"),
                   (label or node_id, f"/node/{url_of(node_id)}"),
                   (f"request {index + 1}", None)),
            f"<h1>{e(label or node_id)}</h1>",
            "<div class='legend'><span class='ok'>= shared by every request</span>"
            "<span class='warn'>~ differs</span>"
-           "<span class='muted'>? not in the split</span></div>",
+           "<span class='muted'>? not in the split</span>"
+           f"<span class='note'>{prompt_tokens or 0:,} tokens, shown whole</span></div>",
            pager, "<div class='req'>"]
 
     for tool in request.get("tools") or []:
@@ -327,10 +334,7 @@ def view_call(store: Store, node_id: str, index: int) -> bytes:
             kind = verdict.get((region, line[:4000]))
             cls, glyph = {"static": ("ok", "="),
                           "dynamic": ("warn", "~")}.get(kind, ("muted", "?"))
-            shown = e(line[:LINE_CAP])
-            if len(line) > LINE_CAP:
-                shown += f"<span class='note'>[+{len(line) - LINE_CAP:,} chars]</span>"
-            rendered.append(f"<div><span class='{cls}'>{glyph}</span> {shown}</div>")
+            rendered.append(f"<div><span class='{cls}'>{glyph}</span> {e(line)}</div>")
         out.append(f"<div class='msg'><b>[{e(role)}]</b>{''.join(rendered)}</div>")
 
     message = response.get("message") or {}
